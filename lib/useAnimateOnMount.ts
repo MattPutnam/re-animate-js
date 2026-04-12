@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { DEFAULT_DURATION_MS, type UseAnimateProps } from "./common";
-import { applyEasing, Easings } from "./easing";
+import { Easings } from "./easing";
+import { useAnimationRunner } from "./useAnimationRunner";
 
 type UseAnimateOnMountProps = UseAnimateProps & {
   /** Starting value for animation, defaults to 0 */
@@ -24,47 +25,22 @@ export const useAnimateOnMount = ({
   before,
   after,
 }: UseAnimateOnMountProps) => {
-  const [animatedValue, setAnimatedValue] = useState(from);
-  const [isAnimating, setIsAnimating] = useState(true);
+  const { animatedValue, isAnimating, start } = useAnimationRunner(from);
 
   const propsRef = useRef({ value, from, durationMs, easingFunction, before, after });
 
   useEffect(() => {
-    const { value, from, durationMs, easingFunction, before, after } = propsRef.current;
-    const outputSpan = value - from;
-
-    let rafId: number;
-    let startTime: number | undefined;
-
-    const step = (timestamp: number) => {
-      if (startTime === undefined) {
-        startTime = timestamp;
-      }
-
-      const elapsedTime = timestamp - startTime;
-      const elapsedFraction = elapsedTime / durationMs;
-      const outputFraction = applyEasing(easingFunction, elapsedFraction);
-      const outputDiff = outputSpan * outputFraction;
-
-      setAnimatedValue(from + outputDiff);
-
-      if (elapsedTime < durationMs) {
-        rafId = requestAnimationFrame(step);
-      } else {
-        setAnimatedValue(value);
-        after?.();
-        setIsAnimating(false);
-      }
-    };
-
-    before?.();
-    rafId = requestAnimationFrame(step);
-
-    return () => cancelAnimationFrame(rafId);
+    const p = propsRef.current;
+    start({
+      value: p.value,
+      from: p.from,
+      durationMs: p.durationMs,
+      easingFunction: p.easingFunction,
+      before: p.before,
+      after: p.after,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return {
-    animatedValue,
-    isAnimating,
-  };
+  return { animatedValue, isAnimating };
 };

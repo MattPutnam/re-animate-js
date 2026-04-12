@@ -45,6 +45,38 @@ Animates a numeric value once when the component mounts, using `requestAnimation
 
 Returns `{ animatedValue: number, isAnimating: boolean }`.
 
+Props are captured at mount time; subsequent changes are ignored. Remount the component (e.g. with a changing `key`) to re-run.
+
+### `useAnimateOnAction(props)`
+
+Same animation semantics as `useAnimateOnMount`, but fires when the caller invokes the returned `trigger` function. Does not animate on mount.
+
+```tsx
+import { useAnimateOnAction, Easings } from "re-animate-js";
+
+export const PulseCounter = () => {
+  const { animatedValue, isAnimating, trigger } = useAnimateOnAction({
+    value: 100,
+    from: 0,
+    durationMs: 400,
+    easingFunction: Easings.sine.inOut,
+  });
+
+  return (
+    <>
+      <button onClick={trigger} disabled={isAnimating}>Pulse</button>
+      <div>{animatedValue.toFixed(1)}</div>
+    </>
+  );
+};
+```
+
+Props are identical to `useAnimateOnMount`. Returns `{ animatedValue: number, isAnimating: boolean, trigger: () => void }`.
+
+- `trigger` has a stable identity across renders — safe to pass into memoized children or effect dependency arrays.
+- Props are captured at the moment `trigger` is invoked; mid-flight prop changes do not disturb a running animation.
+- Calling `trigger` during an in-flight animation cancels the running animation (no `after` callback for the cancelled run) and starts a new one from `from`.
+
 ### `Easings`
 
 Ready-to-use easing functions. Each family (except `linear`) exposes `in`, `out`, and `inOut` variants:

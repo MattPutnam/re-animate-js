@@ -25,4 +25,14 @@ export default tseslint.config(
       "simple-import-sort/exports": "error",
     },
   },
+  {
+    files: ["lib/**/*.test.{ts,tsx}", "lib/__tests__/**/*.{ts,tsx}"],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "react-hooks/globals": "off",
+    },
+  },
 );

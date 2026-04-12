@@ -77,6 +77,29 @@ Props are identical to `useAnimateOnMount`. Returns `{ animatedValue: number, is
 - Props are captured at the moment `trigger` is invoked; mid-flight prop changes do not disturb a running animation.
 - Calling `trigger` during an in-flight animation cancels the running animation (no `after` callback for the cancelled run) and starts a new one from `from`.
 
+### `useAnimateOnChange(props)`
+
+Animates whenever the `value` prop changes. No animation on mount. Mid-flight changes continue from the current exposed value (no snap-back) over a fresh full `durationMs`.
+
+```tsx
+import { useAnimateOnChange } from "re-animate-js";
+
+export const AnimatedScore = ({ score }: { score: number }) => {
+  const { animatedValue } = useAnimateOnChange({ value: score, durationMs: 400 });
+  return <div>{animatedValue.toFixed(0)}</div>;
+};
+```
+
+| Prop | Type | Default | Description |
+| --- | --- | --- | --- |
+| `value` | `number` | — | Target value. Animations fire when this changes (equality by `Object.is`). |
+| `durationMs` | `number` | `1000` | Duration of each run, captured at the render that delivered the new `value`. |
+| `easingFunction` | `EasingFunction` | `Easings.linear` | Captured at the same render as `durationMs`. |
+| `before` | `() => void` | — | Fires once per animation start (including runs later cancelled). |
+| `after` | `() => void` | — | Fires once per animation that completes. Not fired for cancelled runs. |
+
+Returns `{ animatedValue: number, isAnimating: boolean }`. No `trigger` — animations are driven by prop changes. Mid-flight retargets start from the current exposed value; `isAnimating` stays `true` across the handoff.
+
 ### `Easings`
 
 Ready-to-use easing functions. Each family (except `linear`) exposes `in`, `out`, and `inOut` variants:

@@ -9,7 +9,12 @@ type UseAnimateOnMountProps = UseAnimateProps & {
 };
 
 /**
- * Animates a given value when the component mounts
+ * Animates a given value when the component mounts.
+ *
+ * Props are captured at mount time: subsequent changes to `value`, `from`,
+ * `durationMs`, `easingFunction`, `before`, or `after` are intentionally
+ * ignored. To re-run the animation with new values, remount the component
+ * (e.g. via a changing `key`).
  */
 export const useAnimateOnMount = ({
   value,
@@ -19,39 +24,47 @@ export const useAnimateOnMount = ({
   before,
   after,
 }: UseAnimateOnMountProps) => {
-  const outputSpan = value - from;
   const [animatedValue, setAnimatedValue] = useState(from);
-
   const [isAnimating, setIsAnimating] = useState(true);
-  const startTime = useRef<number | undefined>(undefined);
 
-  function step(timestamp: number) {
-    if (startTime.current === undefined) {
-      startTime.current = timestamp;
-    }
-
-    const elapsedTime = timestamp - startTime.current;
-    const elapsedFraction = elapsedTime / durationMs;
-    const outputFraction = applyEasing(easingFunction, elapsedFraction);
-    const outputDiff = outputSpan * outputFraction;
-
-    setAnimatedValue(value + outputDiff);
-
-    if (elapsedTime < durationMs) {
-      requestAnimationFrame(step);
-    } else {
-      after?.();
-      setIsAnimating(false);
-    }
-  }
+  const propsRef = useRef({ value, from, durationMs, easingFunction, before, after });
 
   useEffect(() => {
+    const { value, from, durationMs, easingFunction, before, after } = propsRef.current;
+    const outputSpan = value - from;
+
+    let rafId: number;
+    let startTime: number | undefined;
+
+    const step = (timestamp: number) => {
+      if (startTime === undefined) {
+        startTime = timestamp;
+      }
+
+      const elapsedTime = timestamp - startTime;
+      const elapsedFraction = elapsedTime / durationMs;
+      const outputFraction = applyEasing(easingFunction, elapsedFraction);
+      const outputDiff = outputSpan * outputFraction;
+
+      setAnimatedValue(from + outputDiff);
+
+      if (elapsedTime < durationMs) {
+        rafId = requestAnimationFrame(step);
+      } else {
+        setAnimatedValue(value);
+        after?.();
+        setIsAnimating(false);
+      }
+    };
+
     before?.();
-    requestAnimationFrame(step);
-  });
+    rafId = requestAnimationFrame(step);
+
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   return {
     animatedValue,
-    isAnimating
-  }
-}
+    isAnimating,
+  };
+};

@@ -1,58 +1,66 @@
 import { useEffect, useRef } from "react";
 
-import { DEFAULT_DURATION_MS, type UseAnimateProps } from "./common";
+import { DEFAULT_DURATION_MS, type Easable, type UseAnimateOpts } from "./common";
 import { Easings } from "./easing";
 import { useAnimationRunner } from "./useAnimationRunner";
 
-type UseAnimateOnChangeProps = UseAnimateProps;
+const toArray = (v: number | number[]): number[] => (Array.isArray(v) ? v : [v]);
+
+const elementWiseEqual = (a: number[], b: number[]): boolean => {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!Object.is(a[i], b[i])) return false;
+  }
+  return true;
+};
 
 /**
- * Animates the exposed value whenever the `value` prop changes.
+ * Animates the exposed value whenever the `value` argument changes.
  *
- * No animation runs on mount — the initial exposed value simply equals the
- * initial `value`. When `value` changes between renders (equality by
- * `Object.is`), an animation starts from the current exposed value toward
- * the new `value` over `durationMs`.
- *
- * If `value` changes again while an animation is in flight, the current
- * animation is cancelled cleanly (no `after` callback for the cancelled run)
- * and a new animation starts from the current exposed value — wherever the
- * previous animation had reached — toward the new target over a fresh full
- * `durationMs`. `isAnimating` stays `true` across the handoff.
+ * Equality between renders is `Object.is` for scalars and length+element-wise
+ * `Object.is` for arrays. Mid-flight changes continue from the current
+ * exposed value (no snap-back). For arrays, length MUST remain stable for
+ * the lifetime of a hook instance (FR-009).
  */
-export const useAnimateOnChange = ({
-  value,
-  durationMs = DEFAULT_DURATION_MS,
-  easingFunction = Easings.linear,
-  before,
-  after,
-}: UseAnimateOnChangeProps) => {
-  const { animatedValue, isAnimating, start } = useAnimationRunner(value);
+export function useAnimateOnChange<T extends Easable>(
+  value: T,
+  opts: UseAnimateOpts = {},
+): { animatedValue: T; isAnimating: boolean } {
+  const isArray = Array.isArray(value);
+  const valueArr = toArray(value);
+
+  const { animatedValue, isAnimating, start } = useAnimationRunner(valueArr);
 
   const firstRenderRef = useRef(true);
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
 
   useEffect(() => {
     if (firstRenderRef.current) {
       firstRenderRef.current = false;
       return;
     }
-    if (Object.is(value, animatedValue)) {
+
+    if (elementWiseEqual(animatedValue, valueArr)) {
       return;
     }
-    start({
-      value,
-      from: animatedValue,
-      durationMs,
-      easingFunction,
-      before,
-      after,
-    });
-    // `animatedValue` is intentionally excluded: the hook retargets only on
-    // `value` changes, reading the current `animatedValue` as the origin at
-    // that moment. Including it in deps would re-fire the effect mid-animation
-    // and restart the run on every frame.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value]);
 
-  return { animatedValue, isAnimating };
-};
+    const o = optsRef.current;
+    start({
+      value: valueArr,
+      from: animatedValue,
+      durationMs: o.durationMs ?? DEFAULT_DURATION_MS,
+      easingFunction: o.easingFunction ?? Easings.linear,
+      before: o.before,
+      after: o.after,
+    });
+    // Effect intentionally depends on `valueArr` element-wise: spreading
+    // exploits React's per-element Object.is dep comparison. Length is
+    // assumed stable per FR-009. `animatedValue`, `start`, and opts are
+    // intentionally excluded — see hook docstring.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, valueArr);
+
+  const out = (isArray ? animatedValue : animatedValue[0]) as T;
+  return { animatedValue: out, isAnimating };
+}

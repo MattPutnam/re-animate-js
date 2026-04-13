@@ -8,11 +8,18 @@ import { advanceFrame, installRafHarness, pendingFrameCount, restoreRafHarness }
 beforeEach(() => installRafHarness());
 afterEach(() => restoreRafHarness());
 
-type Props = Parameters<typeof useAnimateOnAction>[0];
+type ScalarProbeProps = {
+  value: number;
+  from?: number;
+  durationMs?: number;
+  before?: () => void;
+  after?: () => void;
+  onTrigger?: (t: () => void) => void;
+};
 
-const Probe = (props: Props & { onTrigger?: (t: () => void) => void }) => {
-  const { animatedValue, isAnimating, trigger } = useAnimateOnAction(props);
-  props.onTrigger?.(trigger);
+const Probe = ({ value, onTrigger, ...opts }: ScalarProbeProps) => {
+  const { animatedValue, isAnimating, trigger } = useAnimateOnAction(value, opts);
+  onTrigger?.(trigger);
   return (
     <>
       <span data-testid="value">{animatedValue}</span>
@@ -22,9 +29,10 @@ const Probe = (props: Props & { onTrigger?: (t: () => void) => void }) => {
 };
 
 const readValue = (c: HTMLElement) => Number(c.querySelector("[data-testid=value]")!.textContent);
-const readAnimating = (c: HTMLElement) => c.querySelector("[data-testid=animating]")!.textContent === "true";
+const readAnimating = (c: HTMLElement) =>
+  c.querySelector("[data-testid=animating]")!.textContent === "true";
 
-describe("useAnimateOnAction — US1 (trigger-driven animation)", () => {
+describe("useAnimateOnAction (scalar) — US1", () => {
   it("C1: before any trigger, animatedValue === from and isAnimating === false", () => {
     const { container } = render(<Probe value={100} from={5} durationMs={100} />);
     expect(readValue(container)).toBe(5);
@@ -66,7 +74,7 @@ describe("useAnimateOnAction — US1 (trigger-driven animation)", () => {
     expect(readValue(container)).toBe(100);
   });
 
-  it("C9: isAnimating flips true on trigger and false on completion, at most once each", () => {
+  it("C9: isAnimating flips true on trigger and false on completion", () => {
     let trigger: (() => void) | undefined;
     const { container } = render(
       <Probe value={10} from={0} durationMs={50} onTrigger={(t) => (trigger = t)} />,
@@ -100,7 +108,7 @@ describe("useAnimateOnAction — US1 (trigger-driven animation)", () => {
   });
 });
 
-describe("useAnimateOnAction — US2 (re-trigger semantics)", () => {
+describe("useAnimateOnAction (scalar) — US2 (re-trigger)", () => {
   it("C2: trigger identity is stable across re-renders", () => {
     let t1: (() => void) | undefined;
     let t2: (() => void) | undefined;
@@ -109,7 +117,7 @@ describe("useAnimateOnAction — US2 (re-trigger semantics)", () => {
     const Captor = () => {
       const [, setN] = useState(0);
       forceRerender = () => setN((n) => n + 1);
-      const { trigger } = useAnimateOnAction({ value: 10, from: 0, durationMs: 50 });
+      const { trigger } = useAnimateOnAction(10, { from: 0, durationMs: 50 });
       if (t1 === undefined) t1 = trigger;
       else t2 = trigger;
       return null;
@@ -117,8 +125,6 @@ describe("useAnimateOnAction — US2 (re-trigger semantics)", () => {
 
     render(<Captor />);
     act(() => forceRerender!());
-    expect(t1).toBeDefined();
-    expect(t2).toBeDefined();
     expect(t1).toBe(t2);
   });
 
@@ -129,8 +135,7 @@ describe("useAnimateOnAction — US2 (re-trigger semantics)", () => {
     const Parent = () => {
       const [target, setT] = useState(10);
       setTarget = setT;
-      const { animatedValue, trigger: tr } = useAnimateOnAction({
-        value: target,
+      const { animatedValue, trigger: tr } = useAnimateOnAction(target, {
         from: 0,
         durationMs: 50,
       });
@@ -146,15 +151,14 @@ describe("useAnimateOnAction — US2 (re-trigger semantics)", () => {
     expect(readValue(container)).toBe(99);
   });
 
-  it("C7: mid-flight re-trigger cancels old run (no after), restarts from `from`, isAnimating stays true", () => {
+  it("C7: mid-flight re-trigger cancels old run, restarts from `from`, isAnimating stays true", () => {
     let trigger: (() => void) | undefined;
     const before = vi.fn();
     const after = vi.fn();
     const animatingChanges: boolean[] = [];
 
     const Probe2 = () => {
-      const { animatedValue, isAnimating, trigger: tr } = useAnimateOnAction({
-        value: 100,
+      const { animatedValue, isAnimating, trigger: tr } = useAnimateOnAction(100, {
         from: 0,
         durationMs: 100,
         before,
@@ -174,32 +178,25 @@ describe("useAnimateOnAction — US2 (re-trigger semantics)", () => {
     expect(midValue).toBeGreaterThan(0);
     expect(midValue).toBeLessThan(100);
 
-    // Re-trigger mid-flight.
     act(() => trigger!());
-    // Value snaps back to `from`.
     expect(readValue(container)).toBe(0);
-    // Cancelled run's `after` must not fire.
     expect(after).not.toHaveBeenCalled();
-    // `before` fired twice (once per trigger invocation).
     expect(before).toHaveBeenCalledTimes(2);
 
-    // Finish the new run.
     act(() => advanceFrame(100));
     act(() => advanceFrame(200));
     expect(readValue(container)).toBe(100);
     expect(after).toHaveBeenCalledTimes(1);
 
-    // isAnimating stayed true across handoff: no intermediate false before completion.
     const firstTrueIdx = animatingChanges.indexOf(true);
     const finalFalseIdx = animatingChanges.lastIndexOf(false);
     const middle = animatingChanges.slice(firstTrueIdx, finalFalseIdx);
-    // Middle slice should be solid `true` (no intermediate false during handoff).
     expect(middle.every((v) => v === true)).toBe(true);
   });
 });
 
-describe("useAnimateOnAction — edge cases (T014a)", () => {
-  it("FR-013: durationMs=0 snaps to value on next frame with callbacks in order", () => {
+describe("useAnimateOnAction (scalar) — edge cases", () => {
+  it("FR-013/FR-014 from spec 001: durationMs=0 snaps to value on next frame with callbacks in order", () => {
     let trigger: (() => void) | undefined;
     const order: string[] = [];
     const before = vi.fn(() => order.push("before"));
@@ -225,7 +222,7 @@ describe("useAnimateOnAction — edge cases (T014a)", () => {
     expect(order).toEqual(["before", "after"]);
   });
 
-  it("FR-014: from===value still fires before and after, value unchanged", () => {
+  it("FR-014 from spec 001: from===value still fires before and after, value unchanged", () => {
     let trigger: (() => void) | undefined;
     const before = vi.fn();
     const after = vi.fn();
@@ -250,5 +247,121 @@ describe("useAnimateOnAction — edge cases (T014a)", () => {
     act(() => advanceFrame(100));
     expect(readValue(container)).toBe(50);
     expect(after).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ===== Array-mode tests (T012) =====
+
+type ArrayProbeProps = {
+  value: number[];
+  from?: number[];
+  durationMs?: number;
+  before?: () => void;
+  after?: () => void;
+  onTrigger?: (t: () => void) => void;
+};
+
+const ArrayProbe = ({ value, onTrigger, ...opts }: ArrayProbeProps) => {
+  const { animatedValue, isAnimating, trigger } = useAnimateOnAction(value, opts);
+  onTrigger?.(trigger);
+  return (
+    <>
+      <span data-testid="value">{JSON.stringify(animatedValue)}</span>
+      <span data-testid="animating">{String(isAnimating)}</span>
+    </>
+  );
+};
+
+const readArray = (c: HTMLElement): number[] =>
+  JSON.parse(c.querySelector("[data-testid=value]")!.textContent ?? "[]");
+const readArrayAnimating = (c: HTMLElement) =>
+  c.querySelector("[data-testid=animating]")!.textContent === "true";
+
+describe("useAnimateOnAction (array)", () => {
+  it("A2/A6: trigger animates all elements in lockstep, single before/after per run", () => {
+    let trigger: (() => void) | undefined;
+    const before = vi.fn();
+    const after = vi.fn();
+    const { container } = render(
+      <ArrayProbe
+        value={[100, 200]}
+        from={[0, 0]}
+        durationMs={100}
+        before={before}
+        after={after}
+        onTrigger={(t) => (trigger = t)}
+      />,
+    );
+    act(() => trigger!());
+    expect(before).toHaveBeenCalledTimes(1);
+    act(() => advanceFrame(0));
+    act(() => advanceFrame(100));
+    expect(readArray(container)).toEqual([100, 200]);
+    expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("A3: trigger reference is stable across re-renders", () => {
+    let t1: (() => void) | undefined;
+    let t2: (() => void) | undefined;
+    let forceRerender: (() => void) | undefined;
+    const Captor = () => {
+      const [, setN] = useState(0);
+      forceRerender = () => setN((n) => n + 1);
+      const { trigger } = useAnimateOnAction([1, 2], { from: [0, 0], durationMs: 50 });
+      if (t1 === undefined) t1 = trigger;
+      else t2 = trigger;
+      return null;
+    };
+    render(<Captor />);
+    act(() => forceRerender!());
+    expect(t1).toBe(t2);
+  });
+
+  it("A5: mid-flight re-trigger snaps each element back to from[i] and starts fresh", () => {
+    let trigger: (() => void) | undefined;
+    const before = vi.fn();
+    const after = vi.fn();
+    const { container } = render(
+      <ArrayProbe
+        value={[100, 200]}
+        from={[0, 0]}
+        durationMs={100}
+        before={before}
+        after={after}
+        onTrigger={(t) => (trigger = t)}
+      />,
+    );
+    act(() => trigger!());
+    act(() => advanceFrame(0));
+    act(() => advanceFrame(50));
+    const mid = readArray(container);
+    expect(mid[0]).toBeGreaterThan(0);
+    expect(mid[0]).toBeLessThan(100);
+
+    act(() => trigger!());
+    expect(readArray(container)).toEqual([0, 0]);
+    expect(after).not.toHaveBeenCalled();
+    expect(before).toHaveBeenCalledTimes(2);
+
+    act(() => advanceFrame(100));
+    act(() => advanceFrame(200));
+    expect(readArray(container)).toEqual([100, 200]);
+    expect(after).toHaveBeenCalledTimes(1);
+  });
+
+  it("A7: empty array — trigger is a complete no-op", () => {
+    let trigger: (() => void) | undefined;
+    const before = vi.fn();
+    const after = vi.fn();
+    const { container } = render(
+      <ArrayProbe value={[]} durationMs={100} before={before} after={after} onTrigger={(t) => (trigger = t)} />,
+    );
+    expect(pendingFrameCount()).toBe(0);
+    act(() => trigger!());
+    expect(before).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
+    expect(pendingFrameCount()).toBe(0);
+    expect(readArrayAnimating(container)).toBe(false);
+    expect(readArray(container)).toEqual([]);
   });
 });

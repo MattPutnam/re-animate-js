@@ -1,6 +1,12 @@
 # re-animate-js
 
-A lightweight React hook library for animating numeric values with configurable easing.
+A lightweight React hook library for animating numeric values (or arrays of numeric values) with configurable easing.
+
+## Introduction
+
+Animations are great. They can draw attention to important areas of the application, smooth transitions to help the user maintain context, or just make things look snazzy. And it's really great when you can implement your animations in CSS - they perform well and there's lots of support out there. But sometimes, what you really need to do is animate the property of a React component, especially if the source is closed.
+
+`re-animate-js` solves this problem. With one simple hook, you can have any numeric parameter slide from one value to another over time. If you have a lot of values that you need to animate in sync, you can pass them as an array. Arbitrary easing functions are supported, with many of the most common ones built in. Pass in `before` and `after` functions if you need to run additional logic when the animation runs.
 
 ## Installation
 
@@ -17,8 +23,7 @@ import { useAnimateOnMount, Easings } from "re-animate-js";
 import { ProgressBar } from "./ProgressBar";
 
 export const LoadingBar = () => {
-  const { animatedValue } = useAnimateOnMount({
-    value: 100,
+  const { animatedValue } = useAnimateOnMount(100, {
     from: 0,
     durationMs: 1500,
     easingFunction: Easings.sine.inOut,
@@ -28,26 +33,25 @@ export const LoadingBar = () => {
 };
 ```
 
+All hooks share the same shape: `useAnimateXxx(value, opts?)`. The first argument is the value being animated (or, for `useAnimateOnChange`, the value being driven). Pass a `number` to get a `number` back; pass a `number[]` to get a `number[]` of the same length back. Array inputs animate every element on a single shared rAF cycle (one `before`, one `after`, one `isAnimating`).
+
 ## API
 
-### `useAnimateOnMount(props)`
+### `useAnimateOnMount(value, opts?)`
 
-Animates a numeric value once when the component mounts, using `requestAnimationFrame`.
+Animates from `opts.from` to `value` once when the component mounts.
 
-| Prop | Type | Default | Description |
+| Prop (in `opts`) | Type | Default | Description |
 | --- | --- | --- | --- |
-| `value` | `number` | — | Target value to animate to. |
-| `from` | `number` | `0` | Starting value. |
+| `from` | `T` | `0` (scalar) / `Array(N).fill(0)` (array) | Origin of the animation. |
 | `durationMs` | `number` | `1000` | Animation duration in milliseconds. |
 | `easingFunction` | `EasingFunction` | `Easings.linear` | Easing curve to apply. |
-| `before` | `() => void` | — | Called immediately before the animation starts. |
-| `after` | `() => void` | — | Called immediately after the animation finishes. |
+| `before` | `() => void` | — | Called once before the animation starts. |
+| `after` | `() => void` | — | Called once after the animation finishes. |
 
-Returns `{ animatedValue: number, isAnimating: boolean }`.
+Returns `{ animatedValue: T, isAnimating: boolean }`. Props are captured at mount; subsequent prop changes are ignored. Remount via a changing `key` to re-run.
 
-Props are captured at mount time; subsequent changes are ignored. Remount the component (e.g. with a changing `key`) to re-run.
-
-### `useAnimateOnAction(props)`
+### `useAnimateOnAction(value, opts?)`
 
 Same animation semantics as `useAnimateOnMount`, but fires when the caller invokes the returned `trigger` function. Does not animate on mount.
 
@@ -55,8 +59,7 @@ Same animation semantics as `useAnimateOnMount`, but fires when the caller invok
 import { useAnimateOnAction, Easings } from "re-animate-js";
 
 export const PulseCounter = () => {
-  const { animatedValue, isAnimating, trigger } = useAnimateOnAction({
-    value: 100,
+  const { animatedValue, isAnimating, trigger } = useAnimateOnAction(100, {
     from: 0,
     durationMs: 400,
     easingFunction: Easings.sine.inOut,
@@ -71,34 +74,54 @@ export const PulseCounter = () => {
 };
 ```
 
-Props are identical to `useAnimateOnMount`. Returns `{ animatedValue: number, isAnimating: boolean, trigger: () => void }`.
+Same `opts` as `useAnimateOnMount`. Returns `{ animatedValue: T, isAnimating: boolean, trigger: () => void }`.
 
-- `trigger` has a stable identity across renders — safe to pass into memoized children or effect dependency arrays.
+- `trigger` has a stable identity across renders.
 - Props are captured at the moment `trigger` is invoked; mid-flight prop changes do not disturb a running animation.
-- Calling `trigger` during an in-flight animation cancels the running animation (no `after` callback for the cancelled run) and starts a new one from `from`.
+- Calling `trigger` mid-animation cancels the current run (no `after` for the cancelled run) and starts fresh from `from`.
 
-### `useAnimateOnChange(props)`
+### `useAnimateOnChange(value, opts?)`
 
-Animates whenever the `value` prop changes. No animation on mount. Mid-flight changes continue from the current exposed value (no snap-back) over a fresh full `durationMs`.
+Animates whenever `value` changes. No animation on mount. Mid-flight changes continue from the current exposed value (no snap-back) over a fresh full `durationMs`.
 
 ```tsx
 import { useAnimateOnChange } from "re-animate-js";
 
 export const AnimatedScore = ({ score }: { score: number }) => {
-  const { animatedValue } = useAnimateOnChange({ value: score, durationMs: 400 });
+  const { animatedValue } = useAnimateOnChange(score, { durationMs: 400 });
   return <div>{animatedValue.toFixed(0)}</div>;
 };
 ```
 
-| Prop | Type | Default | Description |
+| Prop (in `opts`) | Type | Default | Description |
 | --- | --- | --- | --- |
-| `value` | `number` | — | Target value. Animations fire when this changes (equality by `Object.is`). |
-| `durationMs` | `number` | `1000` | Duration of each run, captured at the render that delivered the new `value`. |
-| `easingFunction` | `EasingFunction` | `Easings.linear` | Captured at the same render as `durationMs`. |
-| `before` | `() => void` | — | Fires once per animation start (including runs later cancelled). |
-| `after` | `() => void` | — | Fires once per animation that completes. Not fired for cancelled runs. |
+| `durationMs` | `number` | `1000` | Duration of each run. |
+| `easingFunction` | `EasingFunction` | `Easings.linear` | Easing curve. |
+| `before` | `() => void` | — | Fires once per animation start. |
+| `after` | `() => void` | — | Fires once per completed run. Not fired for cancelled runs. |
 
-Returns `{ animatedValue: number, isAnimating: boolean }`. No `trigger` — animations are driven by prop changes. Mid-flight retargets start from the current exposed value; `isAnimating` stays `true` across the handoff.
+No `from` — origin is always the current exposed value. Returns `{ animatedValue: T, isAnimating: boolean }`. Equality between renders is `Object.is` for scalars and length-and-element-wise `Object.is` for arrays. For arrays, length must remain stable for the lifetime of the hook instance.
+
+### Animating arrays
+
+Pass a `number[]` as the first argument to any of the three hooks. All elements share one animation cycle:
+
+```tsx
+import { useAnimateOnChange } from "re-animate-js";
+
+export const MovingPoints = ({ xs }: { xs: number[] }) => {
+  const { animatedValue } = useAnimateOnChange(xs, { durationMs: 300 });
+  return (
+    <svg>
+      {animatedValue.map((x, i) => (
+        <circle key={i} cx={x} cy={i * 10} r={3} />
+      ))}
+    </svg>
+  );
+};
+```
+
+This is more efficient and synchronization-safe compared to calling the hook N times — a single `requestAnimationFrame` per visible frame drives all elements.
 
 ### `Easings`
 
@@ -121,6 +144,8 @@ Ready-to-use easing functions. Each family (except `linear`) exposes `in`, `out`
 
 ```bash
 npm run build
+npm run lint
+npm test
 ```
 
 Outputs compiled JS and type declarations to `dist/`.

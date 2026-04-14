@@ -8,6 +8,8 @@ Animations are great. They can draw attention to important areas of the applicat
 
 `re-animate-js` solves this problem. With one simple hook, you can have any numeric parameter slide from one value to another over time. If you have a lot of values that you need to animate in sync, you can pass them as an array. Arbitrary easing functions are supported, with many of the most common ones built in. Pass in `before` and `after` functions if you need to run additional logic when the animation runs.
 
+Play around with it [in the live demo](https://mattputnam.github.io/re-animate-js/)
+
 ## Installation
 
 ```bash

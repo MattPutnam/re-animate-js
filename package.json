@@ -10,6 +10,7 @@
     "build": "tsc",
     "lint": "eslint .",
     "demo": "vite",
+    "demo:build": "GITHUB_PAGES=true vite build",
     "test": "vitest run"
   },
   "keywords": [],

@@ -6,7 +6,7 @@ import globals from "globals";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**"],
+    ignores: ["dist/**", "node_modules/**", "playground/dist/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -23,6 +23,23 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
+    },
+  },
+  {
+    files: ["playground/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/lib/*", "**/lib"],
+              message:
+                "Playground must consume the library through the 're-animate-js' alias only — no reaching into internal modules (FR-009).",
+            },
+          ],
+        },
+      ],
     },
   },
   {

@@ -149,3 +149,13 @@ npm test
 ```
 
 Outputs compiled JS and type declarations to `dist/`.
+
+## Playground
+
+To play with the hooks interactively:
+
+```bash
+npm run demo
+```
+
+This opens a local Vite dev server with one tab per hook. Each demo gives you sliders for value/`from`/duration, a dropdown for easing, and a code snippet that mirrors the current control values. The playground source lives under `playground/` and is excluded from the published package.
